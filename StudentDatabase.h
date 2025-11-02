@@ -12,6 +12,20 @@
 #include <sstream>
 #include <algorithm>
 
+// Helper function to trim whitespace and quotes
+std::string trimQuotes(const std::string& str) {
+    std::string result = str;
+    // Remove leading whitespace
+    size_t start = result.find_first_not_of(" \t\r\n\"");
+    if (start == std::string::npos) return "";
+    result = result.substr(start);
+    // Remove trailing whitespace
+    size_t end = result.find_last_not_of(" \t\r\n\"");
+    if (end == std::string::npos) return "";
+    result = result.substr(0, end + 1);
+    return result;
+}
+
 // Student database for IIIT-Delhi using string-based course codes
 class IIITStudentDatabase {
 private:
@@ -96,7 +110,7 @@ public:
         return result;
     }
     
-    // Read students from CSV file
+    // Read students from CSV file - FIXED CSV PARSING
     void readFromCSV(const std::string& filename) {
         std::ifstream file(filename);
         std::string line;
@@ -113,45 +127,72 @@ public:
                 continue; // Skip header
             }
             
-            std::stringstream ss(line);
-            std::string rollNo, name, branch, yearStr, currentCoursesStr, prevCoursesStr;
+            // Parse CSV with proper handling of quoted fields
+            std::vector<std::string> fields;
+            std::string field;
+            bool inQuotes = false;
             
-            std::getline(ss, rollNo, ',');
-            std::getline(ss, name, ',');
-            std::getline(ss, branch, ',');
-            std::getline(ss, yearStr, ',');
-            std::getline(ss, currentCoursesStr, ',');
-            std::getline(ss, prevCoursesStr, ',');
-            
-            int year = std::stoi(yearStr);
-            Student<std::string, std::string> student(rollNo, name, branch, year);
-            
-            // Add current courses
-            std::stringstream ccs(currentCoursesStr);
-            std::string course;
-            while (std::getline(ccs, course, ',')) {
-                if (!course.empty()) {
-                    student.addCurrentCourse(course);
+            for (size_t i = 0; i < line.length(); i++) {
+                char c = line[i];
+                
+                if (c == '"') {
+                    inQuotes = !inQuotes;
+                } else if (c == ',' && !inQuotes) {
+                    fields.push_back(trimQuotes(field));
+                    field.clear();
+                } else {
+                    field += c;
                 }
             }
+            fields.push_back(trimQuotes(field)); // Add last field
             
-            // Add previous courses with grades
-            if (!prevCoursesStr.empty()) {
-                std::stringstream pcs(prevCoursesStr);
-                std::string courseGrade;
-                while (std::getline(pcs, courseGrade, ',')) {
-                    if (!courseGrade.empty()) {
-                        size_t colonPos = courseGrade.find(':');
-                        if (colonPos != std::string::npos) {
-                            std::string courseName = courseGrade.substr(0, colonPos);
-                            int grade = std::stoi(courseGrade.substr(colonPos + 1));
-                            student.addPreviousCourse(courseName, grade);
+            if (fields.size() < 6) continue; // Skip malformed lines
+            
+            std::string rollNo = trimQuotes(fields[0]);
+            std::string name = trimQuotes(fields[1]);
+            std::string branch = trimQuotes(fields[2]);
+            std::string yearStr = trimQuotes(fields[3]);
+            std::string currentCoursesStr = trimQuotes(fields[4]);
+            std::string prevCoursesStr = trimQuotes(fields[5]);
+            
+            try {
+                int year = std::stoi(yearStr);
+                Student<std::string, std::string> student(rollNo, name, branch, year);
+                
+                // Add current courses
+                if (!currentCoursesStr.empty()) {
+                    std::stringstream ccs(currentCoursesStr);
+                    std::string course;
+                    while (std::getline(ccs, course, ',')) {
+                        course = trimQuotes(course);
+                        if (!course.empty()) {
+                            student.addCurrentCourse(course);
                         }
                     }
                 }
+                
+                // Add previous courses with grades
+                if (!prevCoursesStr.empty()) {
+                    std::stringstream pcs(prevCoursesStr);
+                    std::string courseGrade;
+                    while (std::getline(pcs, courseGrade, ',')) {
+                        courseGrade = trimQuotes(courseGrade);
+                        if (!courseGrade.empty()) {
+                            size_t colonPos = courseGrade.find(':');
+                            if (colonPos != std::string::npos) {
+                                std::string courseName = trimQuotes(courseGrade.substr(0, colonPos));
+                                int grade = std::stoi(trimQuotes(courseGrade.substr(colonPos + 1)));
+                                student.addPreviousCourse(courseName, grade);
+                            }
+                        }
+                    }
+                }
+                
+                addStudent(student);
+            } catch (const std::exception& e) {
+                // Skip lines with parsing errors
+                continue;
             }
-            
-            addStudent(student);
         }
         
         file.close();
@@ -163,6 +204,12 @@ public:
         
         sortedStudents = students;
         int n = sortedStudents.size();
+        
+        if (n == 0) {
+            std::cout << "No students to sort." << std::endl;
+            return;
+        }
+        
         int mid = n / 2;
         
         auto startTime = std::chrono::high_resolution_clock::now();
@@ -330,6 +377,12 @@ public:
         
         sortedStudents = students;
         int n = sortedStudents.size();
+        
+        if (n == 0) {
+            std::cout << "No students to sort." << std::endl;
+            return;
+        }
+        
         int mid = n / 2;
         
         auto startTime = std::chrono::high_resolution_clock::now();

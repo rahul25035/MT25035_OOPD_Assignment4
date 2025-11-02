@@ -68,10 +68,16 @@ public:
         for (const auto& course : currentCourses) {
             std::cout << course << " ";
         }
+        if (currentCourses.empty()) {
+            std::cout << "None";
+        }
         std::cout << std::endl;
         std::cout << "  Previous Courses: ";
         for (const auto& p : previousCourses) {
             std::cout << p.first << ":" << p.second << " ";
+        }
+        if (previousCourses.empty()) {
+            std::cout << "None";
         }
         std::cout << std::endl;
     }
