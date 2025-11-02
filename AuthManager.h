@@ -2,75 +2,76 @@
 #define AUTHMANAGER_H
 
 #include <string>
-#include <iostream>
 
-// Enumeration for user roles
 enum class UserRole {
+    NONE,
     ADMIN,
     STUDENT
 };
 
-// Authentication and Authorization Manager
 class AuthManager {
 private:
     UserRole currentRole;
-    std::string currentUser;
-    
-    // Hardcoded credentials (in real system, would be hashed and stored securely)
+    bool isLoggedIn;
+    std::string currentUsername;
+
+    // Hardcoded credentials (in production, use hashed storage)
     const std::string ADMIN_USERNAME = "admin";
     const std::string ADMIN_PASSWORD = "admin123";
     const std::string STUDENT_USERNAME = "student";
     const std::string STUDENT_PASSWORD = "student123";
-    
+
 public:
-    AuthManager() : currentRole(UserRole::STUDENT), currentUser("") {}
-    
-    // Login as Admin or Student
-    bool login(const std::string& username, const std::string& password, UserRole role) {
-        if (role == UserRole::ADMIN) {
-            if (username == ADMIN_USERNAME && password == ADMIN_PASSWORD) {
-                currentRole = UserRole::ADMIN;
-                currentUser = username;
-                return true;
-            }
-        } else if (role == UserRole::STUDENT) {
-            if (username == STUDENT_USERNAME && password == STUDENT_PASSWORD) {
-                currentRole = UserRole::STUDENT;
-                currentUser = username;
-                return true;
-            }
+    AuthManager() : currentRole(UserRole::NONE), isLoggedIn(false), currentUsername("") {}
+
+    // Login method
+    bool login(const std::string& username, const std::string& password, UserRole& role) {
+        if (username == ADMIN_USERNAME && password == ADMIN_PASSWORD) {
+            currentRole = UserRole::ADMIN;
+            isLoggedIn = true;
+            currentUsername = username;
+            role = UserRole::ADMIN;
+            return true;
+        } else if (username == STUDENT_USERNAME && password == STUDENT_PASSWORD) {
+            currentRole = UserRole::STUDENT;
+            isLoggedIn = true;
+            currentUsername = username;
+            role = UserRole::STUDENT;
+            return true;
         }
         return false;
     }
-    
-    // Logout
+
+    // Logout method
     void logout() {
-        currentUser = "";
+        currentRole = UserRole::NONE;
+        isLoggedIn = false;
+        currentUsername = "";
     }
-    
-    // Get current role
-    UserRole getCurrentRole() const {
-        return currentRole;
+
+    // Check if authenticated
+    bool isAuthenticated() const {
+        return isLoggedIn;
     }
-    
-    // Get current user
-    std::string getCurrentUser() const {
-        return currentUser;
-    }
-    
-    // Check if user is admin
+
+    // Check if admin
     bool isAdmin() const {
         return currentRole == UserRole::ADMIN;
     }
-    
-    // Check if user is student
+
+    // Check if student
     bool isStudent() const {
         return currentRole == UserRole::STUDENT;
     }
-    
-    // Check if user is authenticated
-    bool isAuthenticated() const {
-        return !currentUser.empty();
+
+    // Get current username
+    std::string getCurrentUsername() const {
+        return currentUsername;
+    }
+
+    // Get current role
+    UserRole getCurrentRole() const {
+        return currentRole;
     }
 };
 

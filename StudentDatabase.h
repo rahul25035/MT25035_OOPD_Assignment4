@@ -4,454 +4,614 @@
 #include "Student.h"
 #include <vector>
 #include <map>
+#include <string>
+#include <fstream>
+#include <sstream>
+#include <iostream>
+#include <algorithm>
 #include <thread>
 #include <mutex>
 #include <chrono>
-#include <iostream>
-#include <fstream>
-#include <sstream>
-#include <algorithm>
 
-// Helper function to trim whitespace and quotes
-std::string trimQuotes(const std::string& str) {
-    std::string result = str;
-    // Remove leading whitespace
-    size_t start = result.find_first_not_of(" \t\r\n\"");
-    if (start == std::string::npos) return "";
-    result = result.substr(start);
-    // Remove trailing whitespace
-    size_t end = result.find_last_not_of(" \t\r\n\"");
-    if (end == std::string::npos) return "";
-    result = result.substr(0, end + 1);
-    return result;
-}
-
-// Student database for IIIT-Delhi using string-based course codes
-class IIITStudentDatabase {
-private:
-    std::vector<Student<std::string, std::string>> students; // Vector maintains insertion order
-    std::map<std::string, std::vector<Student<std::string, std::string>*>> courseGradeIndex; // course -> list of students with grade >= 9
-    std::vector<Student<std::string, std::string>> sortedStudents;
+// Base database class with common functionality
+template<typename RollNoType, typename CourseCodeType>
+class StudentDatabase {
+protected:
+    std::vector<Student<RollNoType, CourseCodeType>> studentsData;
+    std::vector<Student<RollNoType, CourseCodeType>> sortedStudentsData;
+    std::map<CourseCodeType, std::vector<Student<RollNoType, CourseCodeType>*>> courseGradeIndex;
     mutable std::mutex dbMutex;
-    
-public:
-    // Add a student
-    void addStudent(const Student<std::string, std::string>& student) {
-        std::lock_guard<std::mutex> lock(dbMutex);
-        students.push_back(student);
-    }
-    
-    // Update student information (Admin function)
-    bool updateStudent(const std::string& rollNo, const std::string& name, 
-                      const std::string& branch, int year) {
-        std::lock_guard<std::mutex> lock(dbMutex);
-        for (auto& student : students) {
-            if (student.getRollNumber() == rollNo) {
-                student.setName(name);
-                student.setBranch(branch);
-                student.setStartingYear(year);
-                return true;
+
+    // Helper function: Merge two sorted ranges
+    void merge(std::vector<Student<RollNoType, CourseCodeType>>& data, 
+               int left, int mid, int right) {
+        std::vector<Student<RollNoType, CourseCodeType>> temp;
+        int i = left, j = mid + 1;
+
+        while (i <= mid && j <= right) {
+            if (data[i] < data[j]) {
+                temp.push_back(data[i++]);
+            } else {
+                temp.push_back(data[j++]);
             }
         }
-        return false;
+
+        while (i <= mid) {
+            temp.push_back(data[i++]);
+        }
+
+        while (j <= right) {
+            temp.push_back(data[j++]);
+        }
+
+        for (int i = left; i <= right; i++) {
+            data[i] = temp[i - left];
+        }
     }
-    
-    // Find student by roll number
-    Student<std::string, std::string>* findStudent(const std::string& rollNo) {
+
+    // Helper function: Sort a range using merge sort
+    void mergeSort(std::vector<Student<RollNoType, CourseCodeType>>& data, 
+                   int left, int right) {
+        if (left < right) {
+            int mid = left + (right - left) / 2;
+            mergeSort(data, left, mid);
+            mergeSort(data, mid + 1, right);
+            merge(data, left, mid, right);
+        }
+    }
+
+public:
+    virtual ~StudentDatabase() = default;
+
+    // Add a new student (thread-safe)
+    void addStudent(const Student<RollNoType, CourseCodeType>& student) {
         std::lock_guard<std::mutex> lock(dbMutex);
-        for (auto& student : students) {
-            if (student.getRollNumber() == rollNo) {
-                return &student;
+        
+        // Check if student already exists
+        for (const auto& s : studentsData) {
+            if (s.getRollNumber() == student.getRollNumber()) {
+                std::cout << "Error: Student with this roll number already exists!" << std::endl;
+                return;
+            }
+        }
+        
+        studentsData.push_back(student);
+    }
+
+    // Update existing student
+    void updateStudent(const RollNoType& rollNo, const Student<RollNoType, CourseCodeType>& updatedStudent) {
+        std::lock_guard<std::mutex> lock(dbMutex);
+        
+        for (auto& s : studentsData) {
+            if (s.getRollNumber() == rollNo) {
+                s = updatedStudent;
+                return;
+            }
+        }
+        std::cout << "Student not found!" << std::endl;
+    }
+
+    // Find student by roll number (thread-safe)
+    Student<RollNoType, CourseCodeType>* findStudent(const RollNoType& rollNo) {
+        std::lock_guard<std::mutex> lock(dbMutex);
+        
+        for (auto& s : studentsData) {
+            if (s.getRollNumber() == rollNo) {
+                return &s;
             }
         }
         return nullptr;
     }
-    
-    // Get all students in insertion order (const iterator)
-    const std::vector<Student<std::string, std::string>>& getStudentsInsertionOrder() const {
-        return students;
+
+    // Get insertion order iterator (thread-safe)
+    const std::vector<Student<RollNoType, CourseCodeType>>& getStudentsInsertionOrder() const {
+        return studentsData;
     }
-    
-    // Get sorted students
-    const std::vector<Student<std::string, std::string>>& getSortedStudents() const {
-        return sortedStudents;
+
+    // Get sorted order iterator (thread-safe)
+    const std::vector<Student<RollNoType, CourseCodeType>>& getSortedStudents() const {
+        return sortedStudentsData;
     }
-    
-    // Build course-grade index for fast lookup (requirement 5)
-    void buildCourseGradeIndex() {
-        std::lock_guard<std::mutex> lock(dbMutex);
-        courseGradeIndex.clear();
-        
-        for (auto& student : students) {
-            for (const auto& prevCourse : student.getPreviousCourses()) {
-                if (prevCourse.second >= 9) { // Grade >= 9
-                    courseGradeIndex[prevCourse.first].push_back(&student);
-                }
-            }
-        }
-    }
-    
-    // Get students with grade >= 9 in a specific course
-    std::vector<Student<std::string, std::string>*> getStudentsByGradeAndCourse(
-        const std::string& course, int minGrade = 9) {
-        std::lock_guard<std::mutex> lock(dbMutex);
-        
-        std::vector<Student<std::string, std::string>*> result;
-        auto it = courseGradeIndex.find(course);
-        
-        if (it != courseGradeIndex.end()) {
-            for (auto student : it->second) {
-                if (student->getGradeForCourse(course) >= minGrade) {
-                    result.push_back(student);
-                }
-            }
-        }
-        
-        return result;
-    }
-    
-    // Read students from CSV file - FIXED CSV PARSING
-    void readFromCSV(const std::string& filename) {
-        std::ifstream file(filename);
-        std::string line;
-        bool firstLine = true;
-        
-        if (!file.is_open()) {
-            std::cerr << "Error opening file: " << filename << std::endl;
-            return;
-        }
-        
-        while (std::getline(file, line)) {
-            if (firstLine) {
-                firstLine = false;
-                continue; // Skip header
-            }
-            
-            // Parse CSV with proper handling of quoted fields
-            std::vector<std::string> fields;
-            std::string field;
-            bool inQuotes = false;
-            
-            for (size_t i = 0; i < line.length(); i++) {
-                char c = line[i];
-                
-                if (c == '"') {
-                    inQuotes = !inQuotes;
-                } else if (c == ',' && !inQuotes) {
-                    fields.push_back(trimQuotes(field));
-                    field.clear();
-                } else {
-                    field += c;
-                }
-            }
-            fields.push_back(trimQuotes(field)); // Add last field
-            
-            if (fields.size() < 6) continue; // Skip malformed lines
-            
-            std::string rollNo = trimQuotes(fields[0]);
-            std::string name = trimQuotes(fields[1]);
-            std::string branch = trimQuotes(fields[2]);
-            std::string yearStr = trimQuotes(fields[3]);
-            std::string currentCoursesStr = trimQuotes(fields[4]);
-            std::string prevCoursesStr = trimQuotes(fields[5]);
-            
-            try {
-                int year = std::stoi(yearStr);
-                Student<std::string, std::string> student(rollNo, name, branch, year);
-                
-                // Add current courses
-                if (!currentCoursesStr.empty()) {
-                    std::stringstream ccs(currentCoursesStr);
-                    std::string course;
-                    while (std::getline(ccs, course, ',')) {
-                        course = trimQuotes(course);
-                        if (!course.empty()) {
-                            student.addCurrentCourse(course);
-                        }
-                    }
-                }
-                
-                // Add previous courses with grades
-                if (!prevCoursesStr.empty()) {
-                    std::stringstream pcs(prevCoursesStr);
-                    std::string courseGrade;
-                    while (std::getline(pcs, courseGrade, ',')) {
-                        courseGrade = trimQuotes(courseGrade);
-                        if (!courseGrade.empty()) {
-                            size_t colonPos = courseGrade.find(':');
-                            if (colonPos != std::string::npos) {
-                                std::string courseName = trimQuotes(courseGrade.substr(0, colonPos));
-                                int grade = std::stoi(trimQuotes(courseGrade.substr(colonPos + 1)));
-                                student.addPreviousCourse(courseName, grade);
-                            }
-                        }
-                    }
-                }
-                
-                addStudent(student);
-            } catch (const std::exception& e) {
-                // Skip lines with parsing errors
-                continue;
-            }
-        }
-        
-        file.close();
-    }
-    
-    // Parallel sorting with at least 2 threads
+
+    // Parallel sorting implementation (thread-safe)
     void parallelSort() {
         std::lock_guard<std::mutex> lock(dbMutex);
         
-        sortedStudents = students;
-        int n = sortedStudents.size();
-        
-        if (n == 0) {
-            std::cout << "No students to sort." << std::endl;
+        if (studentsData.empty()) {
+            std::cout << "No students to sort!" << std::endl;
             return;
         }
-        
+
+        // Create a copy for sorting
+        sortedStudentsData = studentsData;
+        int n = sortedStudentsData.size();
         int mid = n / 2;
-        
-        auto startTime = std::chrono::high_resolution_clock::now();
-        
+
+        // Thread variables
+        auto start_total = std::chrono::high_resolution_clock::now();
+
         // Thread 1: Sort first half
-        auto sortFirstHalf = [this, mid]() {
-            auto t1Start = std::chrono::high_resolution_clock::now();
-            std::sort(sortedStudents.begin(), sortedStudents.begin() + mid,
-                     [](const Student<std::string, std::string>& a, 
-                        const Student<std::string, std::string>& b) {
-                         return a.getRollNumber() < b.getRollNumber();
-                     });
-            auto t1End = std::chrono::high_resolution_clock::now();
-            auto t1Duration = std::chrono::duration_cast<std::chrono::milliseconds>(t1End - t1Start);
-            std::cout << "Thread 1 (First half) sorting time: " << t1Duration.count() << " ms" << std::endl;
-        };
-        
+        auto start1 = std::chrono::high_resolution_clock::now();
+        std::thread thread1([this, mid]() {
+            if (mid > 0) {
+                this->mergeSort(this->sortedStudentsData, 0, mid - 1);
+            }
+        });
+
         // Thread 2: Sort second half
-        auto sortSecondHalf = [this, mid, n]() {
-            auto t2Start = std::chrono::high_resolution_clock::now();
-            std::sort(sortedStudents.begin() + mid, sortedStudents.end(),
-                     [](const Student<std::string, std::string>& a, 
-                        const Student<std::string, std::string>& b) {
-                         return a.getRollNumber() < b.getRollNumber();
-                     });
-            auto t2End = std::chrono::high_resolution_clock::now();
-            auto t2Duration = std::chrono::duration_cast<std::chrono::milliseconds>(t2End - t2Start);
-            std::cout << "Thread 2 (Second half) sorting time: " << t2Duration.count() << " ms" << std::endl;
-        };
-        
-        std::thread t1(sortFirstHalf);
-        std::thread t2(sortSecondHalf);
-        
-        t1.join();
-        t2.join();
-        
+        auto start2 = std::chrono::high_resolution_clock::now();
+        std::thread thread2([this, mid, n]() {
+            if (mid < n) {
+                this->mergeSort(this->sortedStudentsData, mid, n - 1);
+            }
+        });
+
+        // Wait for both threads to complete
+        thread1.join();
+        thread2.join();
+
+        auto end1 = std::chrono::high_resolution_clock::now();
+        auto end2 = std::chrono::high_resolution_clock::now();
+
         // Merge the two sorted halves
-        std::vector<Student<std::string, std::string>> temp(n);
-        int i = 0, j = mid, k = 0;
+        if (n > 1) {
+            merge(sortedStudentsData, 0, mid - 1, n - 1);
+        }
+
+        auto end_total = std::chrono::high_resolution_clock::now();
+
+        // Calculate timings
+        auto duration1 = std::chrono::duration_cast<std::chrono::milliseconds>(end1 - start1);
+        auto duration2 = std::chrono::duration_cast<std::chrono::milliseconds>(end2 - start2);
+        auto duration_total = std::chrono::duration_cast<std::chrono::milliseconds>(end_total - start_total);
+
+        std::cout << "Performing parallel sorting..." << std::endl;
+        std::cout << "Thread 1 (First half) sorting time: " << duration1.count() << " ms" << std::endl;
+        std::cout << "Thread 2 (Second half) sorting time: " << duration2.count() << " ms" << std::endl;
+        std::cout << "Total parallel sorting time (including merge): " << duration_total.count() << " ms" << std::endl;
+        std::cout << "Sorting completed!" << std::endl;
+    }
+
+    // Build course grade index for fast lookup (thread-safe)
+    void buildCourseGradeIndex() {
+        std::lock_guard<std::mutex> lock(dbMutex);
         
-        while (i < mid && j < n) {
-            if (sortedStudents[i].getRollNumber() < sortedStudents[j].getRollNumber()) {
-                temp[k++] = sortedStudents[i++];
-            } else {
-                temp[k++] = sortedStudents[j++];
+        courseGradeIndex.clear();
+
+        for (auto& student : studentsData) {
+            const auto& previousCourses = student.getPreviousCourses();
+            for (const auto& [courseCode, grade] : previousCourses) {
+                if (grade >= 9) {
+                    courseGradeIndex[courseCode].push_back(&student);
+                }
             }
         }
-        
-        while (i < mid) {
-            temp[k++] = sortedStudents[i++];
-        }
-        
-        while (j < n) {
-            temp[k++] = sortedStudents[j++];
-        }
-        
-        sortedStudents = temp;
-        
-        auto endTime = std::chrono::high_resolution_clock::now();
-        auto totalDuration = std::chrono::duration_cast<std::chrono::milliseconds>(endTime - startTime);
-        std::cout << "Total parallel sorting time: " << totalDuration.count() << " ms" << std::endl;
     }
-    
-    // Get number of students
-    size_t getStudentCount() const {
-        return students.size();
+
+    // Get students by grade and course (O(1) lookup)
+    const std::vector<Student<RollNoType, CourseCodeType>*>* getStudentsByGradeAndCourse(const CourseCodeType& courseCode) const {
+        auto it = courseGradeIndex.find(courseCode);
+        if (it != courseGradeIndex.end()) {
+            return &(it->second);
+        }
+        return nullptr;
     }
-    
-    // Display all students
-    void displayAll() const {
+
+    // Get total number of students
+    int getTotalStudents() const {
+        return studentsData.size();
+    }
+};
+
+// IIIT-Delhi database using string course codes
+class IIITStudentDatabase : public StudentDatabase<std::string, std::string> {
+public:
+    // Read from CSV file - FIXED CSV parsing
+    void readFromCSV(const std::string& filename) {
         std::lock_guard<std::mutex> lock(dbMutex);
-        for (const auto& student : students) {
-            student.display();
+        
+        std::ifstream file(filename);
+        if (!file.is_open()) {
+            std::cout << "Error: Could not open file " << filename << std::endl;
+            return;
+        }
+
+        std::string line;
+        int count = 0;
+
+        // Skip header if present
+        std::getline(file, line);
+
+        while (std::getline(file, line) && count < 3000) {
+            if (line.empty()) continue;
+
+            std::stringstream ss(line);
+            std::string rollNo, name, branch, yearStr, currentCoursesStr, previousCoursesStr;
+
+            if (!std::getline(ss, rollNo, ',')) continue;
+            if (!std::getline(ss, name, ',')) continue;
+            if (!std::getline(ss, branch, ',')) continue;
+            if (!std::getline(ss, yearStr, ',')) continue;
+            if (!std::getline(ss, currentCoursesStr, ',')) continue;
+            if (!std::getline(ss, previousCoursesStr)) continue;
+
+            // Remove quotes if present
+            rollNo.erase(std::remove(rollNo.begin(), rollNo.end(), '"'), rollNo.end());
+            name.erase(std::remove(name.begin(), name.end(), '"'), name.end());
+            branch.erase(std::remove(branch.begin(), branch.end(), '"'), branch.end());
+            yearStr.erase(std::remove(yearStr.begin(), yearStr.end(), '"'), yearStr.end());
+            currentCoursesStr.erase(std::remove(currentCoursesStr.begin(), currentCoursesStr.end(), '"'), currentCoursesStr.end());
+            previousCoursesStr.erase(std::remove(previousCoursesStr.begin(), previousCoursesStr.end(), '"'), previousCoursesStr.end());
+
+            // Trim whitespace
+            rollNo.erase(0, rollNo.find_first_not_of(" \t\r\n"));
+            rollNo.erase(rollNo.find_last_not_of(" \t\r\n") + 1);
+            name.erase(0, name.find_first_not_of(" \t\r\n"));
+            name.erase(name.find_last_not_of(" \t\r\n") + 1);
+
+            int year = std::stoi(yearStr);
+            Student<std::string, std::string> student(rollNo, name, branch, year);
+
+            // Parse current courses - FIXED: properly split by space
+            std::stringstream currentSS(currentCoursesStr);
+            std::string course;
+            while (currentSS >> course) {
+                if (!course.empty()) {
+                    student.addCurrentCourse(course);
+                }
+            }
+
+            // Parse previous courses with grades - FIXED: properly parse course:grade
+            std::stringstream previousSS(previousCoursesStr);
+            std::string courseGrade;
+            while (previousSS >> courseGrade) {
+                if (!courseGrade.empty()) {
+                    size_t colonPos = courseGrade.find(':');
+                    if (colonPos != std::string::npos) {
+                        std::string courseCode = courseGrade.substr(0, colonPos);
+                        try {
+                            int grade = std::stoi(courseGrade.substr(colonPos + 1));
+                            student.addPreviousCourse(courseCode, grade);
+                        } catch (...) {
+                            // Skip invalid entries
+                        }
+                    }
+                }
+            }
+
+            studentsData.push_back(student);
+            count++;
+        }
+
+        file.close();
+        std::cout << "Successfully loaded " << count << " students!" << std::endl;
+    }
+
+    // Save students to CSV file - NEW FUNCTION
+    void saveToCSV(const std::string& filename) {
+        std::lock_guard<std::mutex> lock(dbMutex);
+        
+        std::ofstream file(filename);
+        if (!file.is_open()) {
+            std::cout << "Error: Could not create file " << filename << std::endl;
+            return;
+        }
+
+        // Write header
+        file << "RollNo,Name,Branch,Year,CurrentCourses,PreviousCourses\n";
+
+        // Write all students
+        for (const auto& student : studentsData) {
+            file << student.getRollNumber() << ",";
+            file << student.getName() << ",";
+            file << student.getBranch() << ",";
+            file << student.getStartingYear() << ",";
+
+            // Write current courses
+            const auto& currentCourses = student.getCurrentCourses();
+            for (size_t i = 0; i < currentCourses.size(); i++) {
+                file << currentCourses[i];
+                if (i < currentCourses.size() - 1) file << " ";
+            }
+            file << ",";
+
+            // Write previous courses with grades
+            const auto& previousCourses = student.getPreviousCourses();
+            for (auto it = previousCourses.begin(); it != previousCourses.end(); ++it) {
+                file << it->first << ":" << it->second;
+                auto next = std::next(it);
+                if (next != previousCourses.end()) file << " ";
+            }
+            file << "\n";
+        }
+
+        file.close();
+        std::cout << "Successfully saved " << studentsData.size() << " students to " << filename << std::endl;
+    }
+
+    // Save sorted students to CSV file - NEW FUNCTION
+    void saveSortedToCSV(const std::string& filename) {
+        std::lock_guard<std::mutex> lock(dbMutex);
+        
+        if (sortedStudentsData.empty()) {
+            std::cout << "No sorted data to save! Please perform sorting first." << std::endl;
+            return;
+        }
+
+        std::ofstream file(filename);
+        if (!file.is_open()) {
+            std::cout << "Error: Could not create file " << filename << std::endl;
+            return;
+        }
+
+        // Write header
+        file << "RollNo,Name,Branch,Year,CurrentCourses,PreviousCourses\n";
+
+        // Write sorted students
+        for (const auto& student : sortedStudentsData) {
+            file << student.getRollNumber() << ",";
+            file << student.getName() << ",";
+            file << student.getBranch() << ",";
+            file << student.getStartingYear() << ",";
+
+            // Write current courses
+            const auto& currentCourses = student.getCurrentCourses();
+            for (size_t i = 0; i < currentCourses.size(); i++) {
+                file << currentCourses[i];
+                if (i < currentCourses.size() - 1) file << " ";
+            }
+            file << ",";
+
+            // Write previous courses with grades
+            const auto& previousCourses = student.getPreviousCourses();
+            for (auto it = previousCourses.begin(); it != previousCourses.end(); ++it) {
+                file << it->first << ":" << it->second;
+                auto next = std::next(it);
+                if (next != previousCourses.end()) file << " ";
+            }
+            file << "\n";
+        }
+
+        file.close();
+        std::cout << "Successfully saved " << sortedStudentsData.size() << " sorted students to " << filename << std::endl;
+    }
+
+    // Display sorted students - NEW FUNCTION
+    void displaySorted(int limit = 10) {
+        std::lock_guard<std::mutex> lock(dbMutex);
+        
+        if (sortedStudentsData.empty()) {
+            std::cout << "No sorted data! Please perform sorting first." << std::endl;
+            return;
+        }
+
+        std::cout << "\n--- SORTED STUDENTS (By Roll Number) ---\n";
+        int total = sortedStudentsData.size();
+        int displayCount = std::min(limit, total);
+        std::cout << "Displaying first " << displayCount << " students (Total: " << total << ")\n";
+        
+        for (int i = 0; i < displayCount; i++) {
+            const auto& student = sortedStudentsData[i];
+            std::cout << "Roll No: " << student.getRollNumber() 
+                      << " | Name: " << student.getName() 
+                      << " | Branch: " << student.getBranch() 
+                      << " | Year: " << student.getStartingYear() << "\n";
+            
+            std::cout << "  Current Courses: ";
+            for (const auto& course : student.getCurrentCourses()) {
+                std::cout << course << " ";
+            }
+            std::cout << "\n";
+            
+            std::cout << "  Previous Courses: ";
+            for (const auto& [course, grade] : student.getPreviousCourses()) {
+                std::cout << course << ":" << grade << " ";
+            }
+            std::cout << "\n";
         }
     }
 };
 
-// Student database for IIT-Delhi using integer-based course codes
-class IITStudentDatabase {
-private:
-    std::vector<Student<std::string, int>> students;
-    std::map<int, std::vector<Student<std::string, int>*>> courseGradeIndex;
-    std::vector<Student<std::string, int>> sortedStudents;
-    mutable std::mutex dbMutex;
-    
+// IIT-Delhi database using integer course codes
+class IITStudentDatabase : public StudentDatabase<std::string, int> {
 public:
-    // Add a student
-    void addStudent(const Student<std::string, int>& student) {
-        std::lock_guard<std::mutex> lock(dbMutex);
-        students.push_back(student);
-    }
-    
-    // Update student information (Admin function)
-    bool updateStudent(const std::string& rollNo, const std::string& name,
-                      const std::string& branch, int year) {
-        std::lock_guard<std::mutex> lock(dbMutex);
-        for (auto& student : students) {
-            if (student.getRollNumber() == rollNo) {
-                student.setName(name);
-                student.setBranch(branch);
-                student.setStartingYear(year);
-                return true;
-            }
-        }
-        return false;
-    }
-    
-    // Find student by roll number
-    Student<std::string, int>* findStudent(const std::string& rollNo) {
-        std::lock_guard<std::mutex> lock(dbMutex);
-        for (auto& student : students) {
-            if (student.getRollNumber() == rollNo) {
-                return &student;
-            }
-        }
-        return nullptr;
-    }
-    
-    // Get all students in insertion order
-    const std::vector<Student<std::string, int>>& getStudentsInsertionOrder() const {
-        return students;
-    }
-    
-    // Get sorted students
-    const std::vector<Student<std::string, int>>& getSortedStudents() const {
-        return sortedStudents;
-    }
-    
-    // Build course-grade index for fast lookup
-    void buildCourseGradeIndex() {
-        std::lock_guard<std::mutex> lock(dbMutex);
-        courseGradeIndex.clear();
-        
-        for (auto& student : students) {
-            for (const auto& prevCourse : student.getPreviousCourses()) {
-                if (prevCourse.second >= 9) {
-                    courseGradeIndex[prevCourse.first].push_back(&student);
-                }
-            }
-        }
-    }
-    
-    // Get students with grade >= 9 in a specific course
-    std::vector<Student<std::string, int>*> getStudentsByGradeAndCourse(
-        int course, int minGrade = 9) {
+    // Read from CSV file
+    void readFromCSV(const std::string& filename) {
         std::lock_guard<std::mutex> lock(dbMutex);
         
-        std::vector<Student<std::string, int>*> result;
-        auto it = courseGradeIndex.find(course);
-        
-        if (it != courseGradeIndex.end()) {
-            for (auto student : it->second) {
-                if (student->getGradeForCourse(course) >= minGrade) {
-                    result.push_back(student);
-                }
-            }
-        }
-        
-        return result;
-    }
-    
-    // Parallel sorting
-    void parallelSort() {
-        std::lock_guard<std::mutex> lock(dbMutex);
-        
-        sortedStudents = students;
-        int n = sortedStudents.size();
-        
-        if (n == 0) {
-            std::cout << "No students to sort." << std::endl;
+        std::ifstream file(filename);
+        if (!file.is_open()) {
+            std::cout << "Error: Could not open file " << filename << std::endl;
             return;
         }
-        
-        int mid = n / 2;
-        
-        auto startTime = std::chrono::high_resolution_clock::now();
-        
-        auto sortFirstHalf = [this, mid]() {
-            auto t1Start = std::chrono::high_resolution_clock::now();
-            std::sort(sortedStudents.begin(), sortedStudents.begin() + mid,
-                     [](const Student<std::string, int>& a,
-                        const Student<std::string, int>& b) {
-                         return a.getRollNumber() < b.getRollNumber();
-                     });
-            auto t1End = std::chrono::high_resolution_clock::now();
-            auto t1Duration = std::chrono::duration_cast<std::chrono::milliseconds>(t1End - t1Start);
-            std::cout << "Thread 1 (First half) sorting time: " << t1Duration.count() << " ms" << std::endl;
-        };
-        
-        auto sortSecondHalf = [this, mid, n]() {
-            auto t2Start = std::chrono::high_resolution_clock::now();
-            std::sort(sortedStudents.begin() + mid, sortedStudents.end(),
-                     [](const Student<std::string, int>& a,
-                        const Student<std::string, int>& b) {
-                         return a.getRollNumber() < b.getRollNumber();
-                     });
-            auto t2End = std::chrono::high_resolution_clock::now();
-            auto t2Duration = std::chrono::duration_cast<std::chrono::milliseconds>(t2End - t2Start);
-            std::cout << "Thread 2 (Second half) sorting time: " << t2Duration.count() << " ms" << std::endl;
-        };
-        
-        std::thread t1(sortFirstHalf);
-        std::thread t2(sortSecondHalf);
-        
-        t1.join();
-        t2.join();
-        
-        // Merge
-        std::vector<Student<std::string, int>> temp(n);
-        int i = 0, j = mid, k = 0;
-        
-        while (i < mid && j < n) {
-            if (sortedStudents[i].getRollNumber() < sortedStudents[j].getRollNumber()) {
-                temp[k++] = sortedStudents[i++];
-            } else {
-                temp[k++] = sortedStudents[j++];
+
+        std::string line;
+        int count = 0;
+
+        // Skip header if present
+        std::getline(file, line);
+
+        while (std::getline(file, line) && count < 3000) {
+            if (line.empty()) continue;
+
+            std::stringstream ss(line);
+            std::string rollNo, name, branch, yearStr, currentCoursesStr, previousCoursesStr;
+
+            if (!std::getline(ss, rollNo, ',')) continue;
+            if (!std::getline(ss, name, ',')) continue;
+            if (!std::getline(ss, branch, ',')) continue;
+            if (!std::getline(ss, yearStr, ',')) continue;
+            if (!std::getline(ss, currentCoursesStr, ',')) continue;
+            if (!std::getline(ss, previousCoursesStr)) continue;
+
+            // Remove quotes if present
+            rollNo.erase(std::remove(rollNo.begin(), rollNo.end(), '"'), rollNo.end());
+            name.erase(std::remove(name.begin(), name.end(), '"'), name.end());
+            branch.erase(std::remove(branch.begin(), branch.end(), '"'), branch.end());
+
+            int year = std::stoi(yearStr);
+            Student<std::string, int> student(rollNo, name, branch, year);
+
+            // Parse current courses (convert to integers)
+            std::stringstream currentSS(currentCoursesStr);
+            std::string course;
+            while (currentSS >> course) {
+                if (!course.empty()) {
+                    try {
+                        student.addCurrentCourse(std::stoi(course));
+                    } catch (...) {
+                        // Skip if not a valid integer
+                    }
+                }
             }
+
+            // Parse previous courses with grades
+            std::stringstream previousSS(previousCoursesStr);
+            std::string courseGrade;
+            while (previousSS >> courseGrade) {
+                if (!courseGrade.empty()) {
+                    size_t colonPos = courseGrade.find(':');
+                    if (colonPos != std::string::npos) {
+                        try {
+                            int courseCode = std::stoi(courseGrade.substr(0, colonPos));
+                            int grade = std::stoi(courseGrade.substr(colonPos + 1));
+                            student.addPreviousCourse(courseCode, grade);
+                        } catch (...) {
+                            // Skip invalid entries
+                        }
+                    }
+                }
+            }
+
+            studentsData.push_back(student);
+            count++;
         }
-        
-        while (i < mid) {
-            temp[k++] = sortedStudents[i++];
-        }
-        
-        while (j < n) {
-            temp[k++] = sortedStudents[j++];
-        }
-        
-        sortedStudents = temp;
-        
-        auto endTime = std::chrono::high_resolution_clock::now();
-        auto totalDuration = std::chrono::duration_cast<std::chrono::milliseconds>(endTime - startTime);
-        std::cout << "Total parallel sorting time: " << totalDuration.count() << " ms" << std::endl;
+
+        file.close();
+        std::cout << "Successfully loaded " << count << " students!" << std::endl;
     }
-    
-    size_t getStudentCount() const {
-        return students.size();
-    }
-    
-    void displayAll() const {
+
+    // Save students to CSV file
+    void saveToCSV(const std::string& filename) {
         std::lock_guard<std::mutex> lock(dbMutex);
-        for (const auto& student : students) {
-            student.display();
+        
+        std::ofstream file(filename);
+        if (!file.is_open()) {
+            std::cout << "Error: Could not create file " << filename << std::endl;
+            return;
+        }
+
+        // Write header
+        file << "RollNo,Name,Branch,Year,CurrentCourses,PreviousCourses\n";
+
+        // Write all students
+        for (const auto& student : studentsData) {
+            file << student.getRollNumber() << ",";
+            file << student.getName() << ",";
+            file << student.getBranch() << ",";
+            file << student.getStartingYear() << ",";
+
+            // Write current courses
+            const auto& currentCourses = student.getCurrentCourses();
+            for (size_t i = 0; i < currentCourses.size(); i++) {
+                file << currentCourses[i];
+                if (i < currentCourses.size() - 1) file << " ";
+            }
+            file << ",";
+
+            // Write previous courses with grades
+            const auto& previousCourses = student.getPreviousCourses();
+            for (auto it = previousCourses.begin(); it != previousCourses.end(); ++it) {
+                file << it->first << ":" << it->second;
+                auto next = std::next(it);
+                if (next != previousCourses.end()) file << " ";
+            }
+            file << "\n";
+        }
+
+        file.close();
+        std::cout << "Successfully saved " << studentsData.size() << " students to " << filename << std::endl;
+    }
+
+    // Save sorted students to CSV file
+    void saveSortedToCSV(const std::string& filename) {
+        std::lock_guard<std::mutex> lock(dbMutex);
+        
+        if (sortedStudentsData.empty()) {
+            std::cout << "No sorted data to save! Please perform sorting first." << std::endl;
+            return;
+        }
+
+        std::ofstream file(filename);
+        if (!file.is_open()) {
+            std::cout << "Error: Could not create file " << filename << std::endl;
+            return;
+        }
+
+        // Write header
+        file << "RollNo,Name,Branch,Year,CurrentCourses,PreviousCourses\n";
+
+        // Write sorted students
+        for (const auto& student : sortedStudentsData) {
+            file << student.getRollNumber() << ",";
+            file << student.getName() << ",";
+            file << student.getBranch() << ",";
+            file << student.getStartingYear() << ",";
+
+            // Write current courses
+            const auto& currentCourses = student.getCurrentCourses();
+            for (size_t i = 0; i < currentCourses.size(); i++) {
+                file << currentCourses[i];
+                if (i < currentCourses.size() - 1) file << " ";
+            }
+            file << ",";
+
+            // Write previous courses with grades
+            const auto& previousCourses = student.getPreviousCourses();
+            for (auto it = previousCourses.begin(); it != previousCourses.end(); ++it) {
+                file << it->first << ":" << it->second;
+                auto next = std::next(it);
+                if (next != previousCourses.end()) file << " ";
+            }
+            file << "\n";
+        }
+
+        file.close();
+        std::cout << "Successfully saved " << sortedStudentsData.size() << " sorted students to " << filename << std::endl;
+    }
+
+    // Display sorted students
+    void displaySorted(int limit = 10) {
+        std::lock_guard<std::mutex> lock(dbMutex);
+        
+        if (sortedStudentsData.empty()) {
+            std::cout << "No sorted data! Please perform sorting first." << std::endl;
+            return;
+        }
+
+        std::cout << "\n--- SORTED STUDENTS (By Roll Number) ---\n";
+        int total = sortedStudentsData.size();
+        int displayCount = std::min(limit, total);
+        std::cout << "Displaying first " << displayCount << " students (Total: " << total << ")\n";
+        
+        for (int i = 0; i < displayCount; i++) {
+            const auto& student = sortedStudentsData[i];
+            std::cout << "Roll No: " << student.getRollNumber() 
+                      << " | Name: " << student.getName() 
+                      << " | Branch: " << student.getBranch() 
+                      << " | Year: " << student.getStartingYear() << "\n";
+            
+            std::cout << "  Current Courses: ";
+            for (const auto& course : student.getCurrentCourses()) {
+                std::cout << course << " ";
+            }
+            std::cout << "\n";
+            
+            std::cout << "  Previous Courses: ";
+            for (const auto& [course, grade] : student.getPreviousCourses()) {
+                std::cout << course << ":" << grade << " ";
+            }
+            std::cout << "\n";
         }
     }
 };
