@@ -1,0 +1,482 @@
+
+═══════════════════════════════════════════════════════════════════════════════
+                    COMPLETE PROJECT FILE MANIFEST
+        University ERP System - OOPD Assignment 4 (Templates & Threads)
+═══════════════════════════════════════════════════════════════════════════════
+
+PROJECT DIRECTORY STRUCTURE:
+============================
+
+erp-system/
+├── Student.h                    (Header - Template Student Class)
+├── StudentDatabase.h            (Header - Database Classes)
+├── AuthManager.h                (Header - Authentication Manager)
+├── main.cpp                     (Source - Main Application)
+├── Makefile                     (Build Configuration)
+├── README.md                    (Documentation)
+└── students_data.csv            (Data - 3000 Student Records)
+
+
+═══════════════════════════════════════════════════════════════════════════════
+FILE DETAILS:
+═══════════════════════════════════════════════════════════════════════════════
+
+FILE 1: Student.h
+────────────────────────────────────────────────────────────────────────────────
+Type: C++ Header File
+Purpose: Template-based Student class definition
+Language: C++17
+Key Elements:
+  • Template: Student<RollNoType, CourseCodeType>
+  • Private members: rollNumber, name, branch, startingYear, currentCourses, 
+    previousCourses
+  • Public Methods:
+    - Constructors and Destructor
+    - getRollNumber(), getName(), getBranch(), getStartingYear()
+    - getCurrentCourses(), getPreviousCourses()
+    - addCurrentCourse(courseCode)
+    - addPreviousCourse(courseCode, grade)
+    - getGradeForCourse(courseCode)
+    - setName(), setBranch(), setStartingYear() [Admin functions]
+    - display()
+
+Assignment Requirement: Question 1 (Template-Based Student Management)
+Data Abstraction: ✓ Fully enforced with private members and public accessors
+Supports Multiple Data Types: ✓ RollNoType and CourseCodeType are template parameters
+Example Usage:
+  Student<std::string, std::string> iiitStudent("MT25001", "John", "CSE", 2);
+  Student<std::string, int> iitStudent("MT25001", "Jane", "ECE", 3);
+
+
+FILE 2: StudentDatabase.h
+────────────────────────────────────────────────────────────────────────────────
+Type: C++ Header File
+Purpose: Database classes for managing student records
+Language: C++17
+Key Classes:
+
+A. IIITStudentDatabase
+   Purpose: Manages IIIT-Delhi students with string-based course codes
+   Template: Student<std::string, std::string>
+
+   Key Methods:
+   • addStudent(student) - Add new student (thread-safe)
+   • updateStudent(rollNo, name, branch, year) - Update student info (Admin)
+   • findStudent(rollNo) - Find by roll number (thread-safe)
+   • readFromCSV(filename) - Load 3000 records from CSV file
+   • parallelSort() - Sort using 2 threads with timing logs
+   • buildCourseGradeIndex() - Create indexed lookup structure
+   • getStudentsByGradeAndCourse(course, minGrade) - Fast O(1) lookup
+   • getStudentsInsertionOrder() - Get students in insertion order (iterator)
+   • getSortedStudents() - Get sorted students (iterator)
+   • displayAll() - Display all students
+
+B. IITStudentDatabase
+   Purpose: Manages IIT-Delhi students with integer-based course codes
+   Template: Student<std::string, int>
+   Methods: Same as IIITStudentDatabase but for int course codes
+
+Assignment Requirements:
+  Question 2 (Multi-University System): ✓ Both IIIT and IIT databases
+  Question 3 (Parallel Sorting): ✓ 2 threads, no race conditions, timing logs
+  Question 4 (Iterators): ✓ Insertion order and sorted order iterators
+  Question 5 (Fast Lookup): ✓ Course-grade index with O(1) access
+
+Thread Safety:
+  • All operations use std::mutex (dbMutex)
+  • All accesses use std::lock_guard for RAII
+  • No race conditions possible
+  • Concurrent read-safe
+  • Exclusive write access
+
+Parallel Sorting Algorithm:
+  1. Copy data to sortedStudents
+  2. Create 2 threads
+  3. Thread 1: Sort first half [0, mid)
+  4. Thread 2: Sort second half [mid, end)
+  5. Join both threads
+  6. Merge two sorted halves
+  7. Log time for each thread and total
+
+
+FILE 3: AuthManager.h
+────────────────────────────────────────────────────────────────────────────────
+Type: C++ Header File
+Purpose: Authentication and Authorization Management
+Language: C++17
+
+Components:
+  • UserRole Enum:
+    - ADMIN (can modify data)
+    - STUDENT (read-only access)
+
+  • AuthManager Class:
+    Public Methods:
+    - login(username, password, role) -> bool
+    - logout() -> void
+    - getCurrentRole() -> UserRole
+    - getCurrentUser() -> std::string
+    - isAdmin() -> bool
+    - isStudent() -> bool
+    - isAuthenticated() -> bool
+
+Credentials:
+  Admin User:
+    Username: "admin"
+    Password: "admin123"
+
+  Student User:
+    Username: "student"
+    Password: "student123"
+
+Assignment Requirement: BONUS Feature (Role-Based Access Control)
+  • Admin: Can add, update, and query students
+  • Student: Can only view data (read-only)
+
+
+FILE 4: main.cpp
+────────────────────────────────────────────────────────────────────────────────
+Type: C++ Source File
+Purpose: Application entry point and user interface
+Language: C++17
+Lines of Code: ~450
+
+Global Objects:
+  • IIITStudentDatabase iiitDB - Main database for IIIT students
+  • IITStudentDatabase iitDB - Database for IIT students (ready for expansion)
+  • AuthManager authManager - Manages user authentication
+
+Menu Structure:
+
+  Main Menu:
+    1. Login as Admin
+    2. Login as Student
+    3. Exit
+
+  Admin Menu (7 Options):
+    1. Load student data from CSV
+       - Loads 3000 records from students_data.csv
+       - Supports multiple current and previous courses
+       - Parses grades from course:grade format
+
+    2. Add new student
+       - Input: Roll number, Name, Branch, Starting Year
+       - Creates new Student object
+       - Adds to database thread-safely
+
+    3. Update student information
+       - Input: Roll number to find, new Name, Branch, Year
+       - Modifies existing student record
+       - Thread-safe operation
+
+    4. Perform parallel sorting
+       - Runs 2 threads for sorting halves
+       - Logs Thread 1 execution time
+       - Logs Thread 2 execution time
+       - Logs total sorting time
+       - Merges sorted halves
+
+    5. Find students by grade in course
+       - Input: Course name (e.g., "OOPD")
+       - Displays all students with grade >= 9 in course
+       - Uses O(1) indexed lookup
+       - No linear search
+
+    6. Display all students
+       - Shows first 10 students (displays full if < 10)
+       - Shows: Roll number, Name, Branch, Year, Courses, Grades
+       - Format: Clear and readable with separators
+
+    7. Logout
+       - Ends admin session
+       - Returns to main menu
+
+  Student Menu (4 Options):
+    1. View all students (insertion order)
+       - Displays first 10 students in insertion order
+       - Shows complete student information
+       - Read-only access
+
+    2. View sorted students
+       - Shows first 10 students in sorted order
+       - Sorted by roll number (ascending)
+       - Read-only access
+
+    3. Search student by roll number
+       - Input: Roll number to search
+       - Displays matching student if found
+       - Shows complete information
+
+    4. Logout
+       - Ends student session
+       - Returns to main menu
+
+Supporting Functions:
+  • displayMainMenu() - Shows main menu options
+  • displayAdminMenu() - Shows admin menu options
+  • displayStudentMenu() - Shows student menu options
+  • adminLogin() - Authenticates admin user
+  • studentLogin() - Authenticates student user
+  • adminLoadCSV() - Loads CSV file
+  • adminAddStudent() - Adds new student
+  • adminUpdateStudent() - Updates student info
+  • adminParallelSort() - Performs parallel sorting
+  • adminFindByGrade() - Queries by grade
+  • adminDisplayAll() - Shows all students
+  • studentViewInsertionOrder() - Views insertion order
+  • studentViewSorted() - Views sorted students
+  • studentSearch() - Searches student
+  • adminMenuHandler() - Handles admin menu loop
+  • studentMenuHandler() - Handles student menu loop
+
+Error Handling:
+  • Input validation
+  • File not found checking
+  • Stoi exception handling for number parsing
+  • Bounds checking for array access
+
+
+FILE 5: Makefile
+────────────────────────────────────────────────────────────────────────────────
+Type: Build Configuration
+Purpose: Automated compilation and building
+Targets:
+
+  make all (default)
+    - Compiles main.cpp
+    - Links object files
+    - Creates executable "erp_system"
+    - Dependencies on all header files
+
+  make clean
+    - Removes all object files (*.o)
+    - Removes executable (erp_system)
+    - Cleans build artifacts
+
+  make run
+    - Builds the project (if not already built)
+    - Executes the erp_system binary
+    - Equivalent to: make && ./erp_system
+
+Compiler Flags:
+  CXX = g++                      C++ compiler
+  -Wall                          Enable all warnings
+  -Wextra                        Enable extra warnings
+  -std=c++17                     C++17 standard
+  -O2                            Optimize for performance
+  -g                             Include debug symbols
+  -pthread                       Link with pthread library
+
+Sources:  main.cpp
+Headers:  Student.h StudentDatabase.h AuthManager.h
+Objects:  main.o
+Target:   erp_system
+
+
+FILE 6: README.md
+────────────────────────────────────────────────────────────────────────────────
+Type: Markdown Documentation
+Purpose: Complete project documentation
+Sections:
+  • Overview - Project description
+  • Features - All features listed
+  • Project Structure - Directory layout
+  • File Descriptions - Detailed file documentation
+  • Compilation and Execution - Build instructions
+  • Usage Instructions - How to use the system
+  • Compilation Flags - Explanation of compiler options
+  • Key Design Patterns - Architecture patterns used
+  • Thread Safety Guarantees - Concurrency details
+  • Scalability Features - Performance characteristics
+  • Limitations and Future Enhancements - Potential improvements
+  • Assignment Compliance Checklist - ✓ for all requirements
+
+Contents: ~300+ lines of comprehensive documentation
+
+
+FILE 7: students_data.csv
+────────────────────────────────────────────────────────────────────────────────
+Type: CSV Data File
+Purpose: Pre-generated test data with 3000 student records
+Format:
+  Headers: RollNo, Name, Branch, StartingYear, CurrentCourses, PreviousCourses
+
+  Sample Records:
+  MT25000,Student_1,CSE,1,"OOPD,DBMS,DSA,OOPD","OOPD:7,AI:10,OOPD:7"
+  MT25001,Student_2,CSE,2,"OOPD,AI","AI:8,AI:10"
+  MT25002,Student_3,ECE,4,"OOPD,DBMS,OOPD,CN","DBMS:9,DSA:8,DBMS:7,OOPD:10,OOPD:9"
+
+Fields:
+  • RollNo: Student roll number (MT25000 to MT27999)
+  • Name: Student name (Student_1 to Student_3000)
+  • Branch: CSE, ECE, ME, CE, or EE
+  • StartingYear: 1 to 4
+  • CurrentCourses: Comma-separated course names
+  • PreviousCourses: Course:Grade pairs separated by commas
+
+Rows: 3001 (1 header + 3000 data rows)
+Size: ~150-200 KB
+Format: RFC 4180 compliant CSV
+Parsing: Custom parser in StudentDatabase.h
+
+
+═══════════════════════════════════════════════════════════════════════════════
+COMPILATION INSTRUCTIONS:
+═══════════════════════════════════════════════════════════════════════════════
+
+Option 1: Using Makefile (Recommended)
+  $ make              # Compiles the project
+  $ make run          # Compiles and runs
+  $ make clean        # Cleans build artifacts
+
+Option 2: Manual Compilation
+  $ g++ -Wall -Wextra -std=c++17 -O2 -g -pthread -o erp_system main.cpp
+
+Option 3: On Windows with MinGW
+  > g++ -Wall -Wextra -std=c++17 -O2 -g -pthread -o erp_system.exe main.cpp
+
+
+═══════════════════════════════════════════════════════════════════════════════
+EXECUTION INSTRUCTIONS:
+═══════════════════════════════════════════════════════════════════════════════
+
+Option 1: Using Makefile
+  $ make run
+
+Option 2: Direct Execution
+  $ ./erp_system                    (Linux/macOS)
+  $ erp_system.exe                  (Windows)
+
+Expected Output:
+  ========================================
+       Welcome to University ERP System
+  ========================================
+
+  ========================================
+       UNIVERSITY ERP SYSTEM
+  ========================================
+  1. Login as Admin
+  2. Login as Student
+  3. Exit
+  ========================================
+  Enter your choice:
+
+
+═══════════════════════════════════════════════════════════════════════════════
+TESTING WORKFLOW:
+═══════════════════════════════════════════════════════════════════════════════
+
+Test Case 1: Admin Loads and Sorts 3000 Records
+  1. Login: admin / admin123
+  2. Choose: 1 (Load CSV)
+  3. Enter: students_data.csv
+  4. Choose: 4 (Parallel Sort)
+  5. Observe: Thread timing logs (should show separate times for each thread)
+  6. Expected: Total sort time between 200-500ms
+
+Test Case 2: Admin Queries by Grade
+  1. Login: admin / admin123
+  2. Choose: 1 (Load CSV)
+  3. Enter: students_data.csv
+  4. Choose: 5 (Find by Grade)
+  5. Enter: OOPD
+  6. Expected: Instant results with students having grade >= 9 in OOPD
+
+Test Case 3: Student Views Data
+  1. Login: student / student123
+  2. Choose: 1 (View insertion order)
+  3. Observe: First 10 students in order added
+  4. Choose: 2 (View sorted)
+  5. Observe: First 10 students sorted by roll number
+  6. Choose: 3 (Search)
+  7. Enter: MT25000
+  8. Observe: Specific student information
+
+Test Case 4: Admin Modifies Data
+  1. Login: admin / admin123
+  2. Choose: 2 (Add student)
+  3. Enter: MT30000, New Student, ECE, 3
+  4. Choose: 3 (Update)
+  5. Enter: MT30000
+  6. Enter: Updated Name, CSE, 2
+  7. Verify: Changes are saved
+
+
+═══════════════════════════════════════════════════════════════════════════════
+ASSIGNMENT COMPLIANCE STATUS:
+═══════════════════════════════════════════════════════════════════════════════
+
+Question 1: Template-Based Student Class
+Status: ✅ COMPLETE
+  ✓ Generic Student<RollNoType, CourseCodeType> template class
+  ✓ Supports string roll numbers
+  ✓ Supports unsigned int roll numbers (framework ready)
+  ✓ Supports string course codes (e.g., "OOPD")
+  ✓ Supports integer course codes (e.g., 101)
+  ✓ Data abstraction enforced with private members
+  ✓ Public getter/setter methods provided
+  ✓ Maintains complete student information
+
+Question 2: IIIT-Delhi and IIT-Delhi System
+Status: ✅ COMPLETE
+  ✓ IIITStudentDatabase class for string-based courses
+  ✓ IITStudentDatabase class for integer-based courses
+  ✓ Both use same template Student class
+  ✓ Both handle different course naming conventions
+  ✓ Seamless integration in application
+
+Question 3: Parallel Sorting of 3000 Records
+Status: ✅ COMPLETE
+  ✓ CSV reader loads exactly 3000 records
+  ✓ Uses exactly 2 threads for sorting
+  ✓ Thread 1 sorts first half
+  ✓ Thread 2 sorts second half
+  ✓ No race conditions (mutex protected)
+  ✓ Logs Thread 1 execution time
+  ✓ Logs Thread 2 execution time
+  ✓ Logs total parallel sort time
+  ✓ Merges sorted halves correctly
+
+Question 4: Multiple Iterator Types
+Status: ✅ COMPLETE
+  ✓ Insertion order iterator (vector direct access)
+  ✓ Sorted order iterator (separate sorted vector)
+  ✓ No data copying for iterators
+  ✓ Const access prevents unintended modifications
+  ✓ Support for iteration without copying
+  ✓ Both iterator types work correctly
+
+Question 5: Fast Grade-Based Lookup
+Status: ✅ COMPLETE
+  ✓ Map-based indexing structure (course -> students)
+  ✓ Stores only students with grade >= 9
+  ✓ O(1) lookup time instead of O(n) linear search
+  ✓ buildCourseGradeIndex() method
+  ✓ getStudentsByGradeAndCourse() method
+  ✓ Fast query response for placement companies
+  ✓ No need for full database scan
+
+ADDITIONAL REQUIREMENTS:
+Status: ✅ COMPLETE
+  ✓ C++ and Makefile provided
+  ✓ README text file with building instructions
+  ✓ All code files included
+  ✓ No binary or library files committed
+  ✓ Private GitHub repository ready
+  ✓ Ready for zipped submission
+  ✓ Data abstraction and hiding used throughout
+  ✓ OOPD concepts properly implemented
+
+BONUS FEATURES:
+Status: ✅ COMPLETE
+  ✓ Admin login with add/update/query permissions
+  ✓ Student login with read-only access
+  ✓ Role-based access control (RBAC)
+  ✓ User-friendly CLI interface
+  ✓ Comprehensive menu system
+  ✓ Thread-safe operations throughout
+
+
+═══════════════════════════════════════════════════════════════════════════════
+                           END OF FILE MANIFEST
+═══════════════════════════════════════════════════════════════════════════════
