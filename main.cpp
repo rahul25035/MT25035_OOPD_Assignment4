@@ -1,476 +1,392 @@
-#include "Student.h"
-#include "StudentDatabase.h"
-#include "AuthManager.h"
 #include <iostream>
-#include <limits>
+#include <fstream>
+#include <sstream>
+#include <vector>
+#include <thread>
 #include <iomanip>
+#include <cmath>
+#include "Student.h"
+#include "StudentManager.h"
+#include "Iterator.h"
+#include "SortingThreads.h"
+#include "SearchIndex.h"
 
-// Global databases
-IIITStudentDatabase* iitdDatabase = nullptr;
-IITStudentDatabase* iitDatabase = nullptr;
+using namespace std;
 
-void clearInputStream() {
-    std::cin.clear();
-    std::cin.ignore(std::numeric_limits<std::streamsize>::max(), '\n');
-}
+// Type aliases for IIIT-Delhi system (string roll numbers, string course codes)
+using IIITStudent = Student<string, IIITCourse>;
+using IIITStudentManager = StudentManager<string, IIITCourse>;
 
-void adminMenu(IIITStudentDatabase* db, AuthManager& auth) {
-    int choice;
-    bool logout = false;
+// Type aliases for IIT-Delhi system (integer roll numbers, integer course codes)
+using IITStudent = Student<unsigned int, IITCourse>;
+using IITStudentManager = StudentManager<unsigned int, IITCourse>;
 
-    while (!logout) {
-        std::cout << "\n========================================\n";
-        std::cout << "     ADMIN MENU\n";
-        std::cout << "========================================\n";
-        std::cout << "1. Load student data from CSV\n";
-        std::cout << "2. Add new student\n";
-        std::cout << "3. Update student information\n";
-        std::cout << "4. Perform parallel sorting\n";
-        std::cout << "5. Find students by grade in course\n";
-        std::cout << "6. Display all students (insertion order)\n";
-        std::cout << "7. Display sorted students\n";
-        std::cout << "8. Save students to CSV\n";
-        std::cout << "9. Save sorted students to CSV\n";
-        std::cout << "10. Logout\n";
-        std::cout << "========================================\n";
-        std::cout << "Enter your choice: ";
+// Global managers
+IIITStudentManager iiitManager;
+IITStudentManager iitManager;
+SortingThreadsManager sortingManager;
 
-        if (!(std::cin >> choice)) {
-            clearInputStream();
-            std::cout << "Invalid choice!\n";
-            continue;
-        }
+// Function declarations
+void displayMainMenu();
+void displayIIITMenu();
+void displayIITMenu();
+void loadStudentsFromCSV();
+void addStudentIIIT();
+void addStudentIIT();
+void displayStudentsIIIT();
+void displayStudentsIIT();
+void performParallelSorting();
+void searchHighGradeStudents();
+void displayStatistics();
 
-        switch (choice) {
-            case 1: {
-                std::string filename;
-                std::cout << "Enter CSV filename: ";
-                clearInputStream();
-                std::getline(std::cin, filename);
-                std::cout << "Loading students from " << filename << "...\n";
-                db->readFromCSV(filename);
-                break;
-            }
+// CSV parsing helper for IIIT courses
+void parseIIITCourses(const string& coursesStr, vector<IIITCourse>& courses) {
+    if (coursesStr.empty()) return;
 
-            case 2: {
-                std::string rollNo, name, branch, yearStr;
-                std::cout << "\n--- ADD NEW STUDENT ---\n";
-                std::cout << "Roll Number: ";
-                clearInputStream();
-                std::getline(std::cin, rollNo);
-                std::cout << "Name: ";
-                std::getline(std::cin, name);
-                std::cout << "Branch: ";
-                std::getline(std::cin, branch);
-                std::cout << "Starting Year: ";
-                std::getline(std::cin, yearStr);
+    stringstream ss(coursesStr);
+    string courseStr;
+    while (getline(ss, courseStr, ';')) {
+        if (courseStr.empty()) continue;
 
-                try {
-                    int year = std::stoi(yearStr);
-                    Student<std::string, std::string> newStudent(rollNo, name, branch, year);
-                    db->addStudent(newStudent);
-                    std::cout << "Student added successfully!\n";
-                } catch (...) {
-                    std::cout << "Error: Invalid input!\n";
-                }
-                break;
-            }
+        size_t pos1 = courseStr.find(':');
+        size_t pos2 = courseStr.rfind(':');
 
-            case 3: {
-                std::string rollNo, name, branch;
-                std::cout << "\n--- UPDATE STUDENT ---\n";
-                std::cout << "Enter roll number of student to update: ";
-                clearInputStream();
-                std::getline(std::cin, rollNo);
-
-                auto student = db->findStudent(rollNo);
-                if (student) {
-                    std::cout << "Current Name: " << student->getName() << "\n";
-                    std::cout << "Enter new name (or press Enter to skip): ";
-                    std::getline(std::cin, name);
-                    if (!name.empty()) {
-                        student->setName(name);
-                    }
-
-                    std::cout << "Current Branch: " << student->getBranch() << "\n";
-                    std::cout << "Enter new branch (or press Enter to skip): ";
-                    std::getline(std::cin, branch);
-                    if (!branch.empty()) {
-                        student->setBranch(branch);
-                    }
-
-                    std::cout << "Student updated successfully!\n";
-                } else {
-                    std::cout << "Student not found!\n";
-                }
-                break;
-            }
-
-            case 4: {
-                if (db->getTotalStudents() == 0) {
-                    std::cout << "No students to sort! Please load data first.\n";
-                } else {
-                    db->parallelSort();
-                    db->buildCourseGradeIndex();
-                }
-                break;
-            }
-
-            case 5: {
-                std::string courseCode;
-                std::cout << "\n--- FIND STUDENTS BY GRADE ---\n";
-                std::cout << "Enter course name: ";
-                clearInputStream();
-                std::getline(std::cin, courseCode);
-
-                const auto* students = db->getStudentsByGradeAndCourse(courseCode);
-                if (students && !students->empty()) {
-                    std::cout << "Found " << students->size() << " students with grade >= 9 in " 
-                              << courseCode << ":\n";
-                    for (const auto* student : *students) {
-                        std::cout << "  - " << student->getName() << " (" 
-                                  << student->getRollNumber() << ")\n";
-                    }
-                } else {
-                    std::cout << "No students found with grade >= 9 in " << courseCode << "\n";
-                }
-                break;
-            }
-
-            case 6: {
-                std::cout << "\n--- ALL STUDENTS (INSERTION ORDER) ---\n";
-                const auto& students = db->getStudentsInsertionOrder();
-                int total = students.size();
-                
-                if (total == 0) {
-                    std::cout << "No students in database!\n";
-                } else {
-                    int displayCount = std::min(10, total);
-                    std::cout << "Displaying first " << displayCount << " students (Total: " 
-                              << total << ")\n";
-                    
-                    for (int i = 0; i < displayCount; i++) {
-                        const auto& student = students[i];
-                        std::cout << "Roll No: " << student.getRollNumber() 
-                                  << " | Name: " << student.getName() 
-                                  << " | Branch: " << student.getBranch() 
-                                  << " | Year: " << student.getStartingYear() << "\n";
-                        
-                        std::cout << "  Current Courses: ";
-                        for (const auto& course : student.getCurrentCourses()) {
-                            std::cout << course << " ";
-                        }
-                        std::cout << "\n";
-                        
-                        std::cout << "  Previous Courses: ";
-                        for (const auto& [course, grade] : student.getPreviousCourses()) {
-                            std::cout << course << ":" << grade << " ";
-                        }
-                        std::cout << "\n";
-                    }
-                }
-                break;
-            }
-
-            case 7: {
-                db->displaySorted(10);
-                break;
-            }
-
-            case 8: {
-                std::string filename;
-                std::cout << "\n--- SAVE STUDENTS TO CSV ---\n";
-                std::cout << "Enter CSV filename (default: students_output.csv): ";
-                clearInputStream();
-                std::getline(std::cin, filename);
-                if (filename.empty()) {
-                    filename = "students_output.csv";
-                }
-                db->saveToCSV(filename);
-                break;
-            }
-
-            case 9: {
-                std::string filename;
-                std::cout << "\n--- SAVE SORTED STUDENTS TO CSV ---\n";
-                std::cout << "Enter CSV filename (default: students_sorted.csv): ";
-                clearInputStream();
-                std::getline(std::cin, filename);
-                if (filename.empty()) {
-                    filename = "students_sorted.csv";
-                }
-                db->saveSortedToCSV(filename);
-                break;
-            }
-
-            case 10: {
-                auth.logout();
-                std::cout << "Logged out successfully!\n";
-                logout = true;
-                break;
-            }
-
-            default: {
-                std::cout << "Invalid choice!\n";
-                break;
-            }
+        if (pos1 != string::npos && pos2 != string::npos && pos1 != pos2) {
+            string code = courseStr.substr(0, pos1);
+            int sem = stoi(courseStr.substr(pos1 + 1, pos2 - pos1 - 1));
+            char grade = courseStr[pos2 + 1];
+            courses.push_back(IIITCourse(code, sem, grade));
         }
     }
 }
 
-void studentMenu(IIITStudentDatabase* db, AuthManager& auth) {
-    int choice;
-    bool logout = false;
+// CSV parsing helper for IIT courses
+void parseIITCourses(const string& coursesStr, vector<IITCourse>& courses) {
+    if (coursesStr.empty()) return;
 
-    while (!logout) {
-        std::cout << "\n========================================\n";
-        std::cout << "     STUDENT MENU (READ-ONLY)\n";
-        std::cout << "========================================\n";
-        std::cout << "1. View students (insertion order)\n";
-        std::cout << "2. View students (sorted order)\n";
-        std::cout << "3. Search student by roll number\n";
-        std::cout << "4. Logout\n";
-        std::cout << "========================================\n";
-        std::cout << "Enter your choice: ";
+    stringstream ss(coursesStr);
+    string courseStr;
+    while (getline(ss, courseStr, ';')) {
+        if (courseStr.empty()) continue;
 
-        if (!(std::cin >> choice)) {
-            clearInputStream();
-            std::cout << "Invalid choice!\n";
-            continue;
-        }
-
-        switch (choice) {
-            case 1: {
-                std::cout << "\n--- STUDENTS (INSERTION ORDER) ---\n";
-                const auto& students = db->getStudentsInsertionOrder();
-                int total = students.size();
-                
-                if (total == 0) {
-                    std::cout << "No students in database!\n";
-                } else {
-                    int displayCount = std::min(20, total);
-                    std::cout << "Displaying first " << displayCount << " students (Total: " 
-                              << total << ")\n";
-                    
-                    for (int i = 0; i < displayCount; i++) {
-                        const auto& student = students[i];
-                        std::cout << i + 1 << ". " << student.getRollNumber() 
-                                  << " - " << student.getName() 
-                                  << " (" << student.getBranch() << ")\n";
-                    }
-                }
-                break;
-            }
-
-            case 2: {
-                std::cout << "\n--- STUDENTS (SORTED ORDER) ---\n";
-                const auto& students = db->getSortedStudents();
-                int total = students.size();
-                
-                if (total == 0) {
-                    std::cout << "No sorted data! Admin must perform sorting first.\n";
-                } else {
-                    int displayCount = std::min(20, total);
-                    std::cout << "Displaying first " << displayCount << " students (Total: " 
-                              << total << ")\n";
-                    
-                    for (int i = 0; i < displayCount; i++) {
-                        const auto& student = students[i];
-                        std::cout << i + 1 << ". " << student.getRollNumber() 
-                                  << " - " << student.getName() 
-                                  << " (" << student.getBranch() << ")\n";
-                    }
-                }
-                break;
-            }
-
-            case 3: {
-                std::string rollNo;
-                std::cout << "\n--- SEARCH STUDENT ---\n";
-                std::cout << "Enter roll number: ";
-                clearInputStream();
-                std::getline(std::cin, rollNo);
-
-                auto student = db->findStudent(rollNo);
-                if (student) {
-                    std::cout << "\nStudent Found:\n";
-                    std::cout << "Roll No: " << student->getRollNumber() << "\n";
-                    std::cout << "Name: " << student->getName() << "\n";
-                    std::cout << "Branch: " << student->getBranch() << "\n";
-                    std::cout << "Starting Year: " << student->getStartingYear() << "\n";
-                    
-                    std::cout << "Current Courses: ";
-                    for (const auto& course : student->getCurrentCourses()) {
-                        std::cout << course << " ";
-                    }
-                    std::cout << "\n";
-                    
-                    std::cout << "Previous Courses: ";
-                    for (const auto& [course, grade] : student->getPreviousCourses()) {
-                        std::cout << course << ":" << grade << " ";
-                    }
-                    std::cout << "\n";
-                } else {
-                    std::cout << "Student not found!\n";
-                }
-                break;
-            }
-
-            case 4: {
-                auth.logout();
-                std::cout << "Logged out successfully!\n";
-                logout = true;
-                break;
-            }
-
-            default: {
-                std::cout << "Invalid choice!\n";
-                break;
-            }
+        size_t pos = courseStr.find(':');
+        if (pos != string::npos) {
+            int code = stoi(courseStr.substr(0, pos));
+            char grade = courseStr[pos + 1];
+            courses.push_back(IITCourse(code, grade));
         }
     }
 }
 
-void loginMenu(AuthManager& auth) {
-    int choice;
-    std::string username, password;
+// Load students from CSV file
+void loadStudentsFromCSV() {
+    string filename;
+    cout << "\nEnter CSV filename (default: students_sample_3000.csv): ";
+    getline(cin, filename);
+    if (filename.empty()) filename = "students_sample_3000.csv";
 
-    std::cout << "\n--- LOGIN MENU ---\n";
-    std::cout << "1. Login as Admin\n";
-    std::cout << "2. Login as Professor\n";
-    std::cout << "========================================\n";
-    std::cout << "Enter your choice: ";
-
-    if (!(std::cin >> choice)) {
-        clearInputStream();
-        std::cout << "Invalid choice!\n";
+    ifstream file(filename);
+    if (!file.is_open()) {
+        cerr << "Error: Could not open file " << filename << endl;
         return;
     }
 
-    UserRole role;
+    string line;
+    getline(file, line); // Skip header
 
-    switch (choice) {
-        case 1: {
-            std::cout << "\n--- ADMIN LOGIN ---\n";
-            std::cout << "Username: ";
-            clearInputStream();
-            std::getline(std::cin, username);
-            std::cout << "Password: ";
-            std::getline(std::cin, password);
+    int count = 0;
+    while (getline(file, line) && count < 3000) {
+        stringstream ss(line);
+        string rollStr, name, branch, yearStr, iiitCoursesStr, iitCoursesStr;
 
-            if (auth.login(username, password, role)) {
-                std::cout << "Login successful! Welcome Admin.\n";
-                adminMenu(iitdDatabase, auth);
-            } else {
-                std::cout << "Login failed! Invalid credentials.\n";
+        getline(ss, rollStr, ',');
+        getline(ss, name, ',');
+        getline(ss, branch, ',');
+        getline(ss, yearStr, ',');
+        getline(ss, iiitCoursesStr, ',');
+        getline(ss, iitCoursesStr, ',');
+
+        if (!rollStr.empty() && !name.empty()) {
+            // Add to both systems with different types
+            try {
+                // IIIT system uses string roll numbers
+                IIITStudent iiitStudent(rollStr, name, branch, stoi(yearStr));
+                vector<IIITCourse> iiitCourses;
+                parseIIITCourses(iiitCoursesStr, iiitCourses);
+                for (const auto& course : iiitCourses) {
+                    iiitStudent.addCourse(course);
+                }
+                iiitManager.addStudent(iiitStudent);
+
+                // IIT system uses unsigned int roll numbers
+                try {
+                    unsigned int rollNum = stoul(rollStr);
+                    IITStudent iitStudent(rollNum, name, branch, stoi(yearStr));
+                    vector<IITCourse> iitCourses;
+                    parseIITCourses(iitCoursesStr, iitCourses);
+                    for (const auto& course : iitCourses) {
+                        iitStudent.addCourse(course);
+                    }
+                    iitManager.addStudent(iitStudent);
+                } catch (...) {
+                    // Skip for non-numeric roll numbers
+                }
+
+                count++;
+            } catch (...) {
+                continue;
             }
+        }
+    }
+
+    file.close();
+    cout << "\n✓ Successfully loaded " << count << " students from " << filename << endl;
+}
+
+// Add IIIT student manually
+void addStudentIIIT() {
+    string roll, name, branch;
+    int year;
+
+    cout << "\nEnter IIIT Student Details:" << endl;
+    cout << "Roll Number (string): "; getline(cin, roll);
+    cout << "Name: "; getline(cin, name);
+    cout << "Branch: "; getline(cin, branch);
+    cout << "Start Year: "; cin >> year;
+    cin.ignore();
+
+    IIITStudent student(roll, name, branch, year);
+
+    // Add courses
+    int numCourses;
+    cout << "Number of courses: "; cin >> numCourses;
+    cin.ignore();
+
+    for (int i = 0; i < numCourses; i++) {
+        string code;
+        int sem;
+        char grade;
+        cout << "  Course " << i+1 << " - Code: "; cin >> code;
+        cout << "  Semester: "; cin >> sem;
+        cout << "  Grade (A/B/C/D): "; cin >> grade;
+        cin.ignore();
+
+        student.addCourse(IIITCourse(code, sem, grade));
+    }
+
+    iiitManager.addStudent(student);
+    cout << "✓ Student added successfully!" << endl;
+}
+
+// Add IIT student manually
+void addStudentIIT() {
+    unsigned int roll;
+    string name, branch;
+    int year;
+
+    cout << "\nEnter IIT Student Details:" << endl;
+    cout << "Roll Number (integer): "; cin >> roll;
+    cin.ignore();
+    cout << "Name: "; getline(cin, name);
+    cout << "Branch: "; getline(cin, branch);
+    cout << "Start Year: "; cin >> year;
+    cin.ignore();
+
+    IITStudent student(roll, name, branch, year);
+
+    // Add courses
+    int numCourses;
+    cout << "Number of courses: "; cin >> numCourses;
+    cin.ignore();
+
+    for (int i = 0; i < numCourses; i++) {
+        int code;
+        char grade;
+        cout << "  Course " << i+1 << " - Code (integer): "; cin >> code;
+        cout << "  Grade (A/B/C/D): "; cin >> grade;
+        cin.ignore();
+
+        student.addCourse(IITCourse(code, grade));
+    }
+
+    iitManager.addStudent(student);
+    cout << "✓ Student added successfully!" << endl;
+}
+
+// Display IIIT students
+void displayStudentsIIIT() {
+    if (iiitManager.getTotalStudents() == 0) {
+        cout << "\nNo IIIT students loaded yet!" << endl;
+        return;
+    }
+
+    int choice;
+    cout << "\n1. Display in Insertion Order\n2. Display in Sorted Order\nChoice: ";
+    cin >> choice;
+    cin.ignore();
+
+    if (choice == 1) {
+        iiitManager.displayInsertionOrder();
+    } else if (choice == 2) {
+        iiitManager.displaySortedOrder();
+    }
+}
+
+// Display IIT students
+void displayStudentsIIT() {
+    if (iitManager.getTotalStudents() == 0) {
+        cout << "\nNo IIT students loaded yet!" << endl;
+        return;
+    }
+
+    int choice;
+    cout << "\n1. Display in Insertion Order\n2. Display in Sorted Order\nChoice: ";
+    cin >> choice;
+    cin.ignore();
+
+    if (choice == 1) {
+        iitManager.displayInsertionOrder();
+    } else if (choice == 2) {
+        iitManager.displaySortedOrder();
+    }
+}
+
+// Parallel sorting
+void performParallelSorting() {
+    if (iiitManager.getTotalStudents() == 0) {
+        cout << "\nNo students loaded! Load CSV first." << endl;
+        return;
+    }
+
+    int numThreads;
+    cout << "\nEnter number of threads (default 2): ";
+    cin >> numThreads;
+    cin.ignore();
+
+    if (numThreads < 2) numThreads = 2;
+
+    auto& students = iiitManager.getStudents();
+    sortingManager.parallelSort(students, numThreads);
+
+    cout << "\n✓ Sorting completed! Check sorting_thread_log.txt for details." << endl;
+}
+
+// Search high grade students
+void searchHighGradeStudents() {
+    if (iiitManager.getTotalStudents() == 0) {
+        cout << "\nNo students loaded yet!" << endl;
+        return;
+    }
+
+    cout << "\n=== Search High Grade Students ===" << endl;
+    cout << "Minimum grade: 1=D, 2=C, 3=B, 4=A" << endl;
+    int minGrade;
+    cout << "Enter minimum grade points (1-10): "; 
+    cin >> minGrade;
+    cin.ignore();
+
+    auto results = iiitManager.findHighGradeStudents(minGrade);
+
+    cout << "\nFound " << results.size() << " students with grade >= " << minGrade << endl;
+    cout << "\nResults (first 10):" << endl;
+    int count = 0;
+    for (int idx : results) {
+        if (count >= 10) {
+            cout << "... and " << (results.size() - 10) << " more" << endl;
             break;
         }
+        cout << count+1 << ". ";
+        iiitManager.getStudent(idx).display();
+        count++;
+    }
+}
 
-        case 2: {
-            std::cout << "\n--- STUDENT LOGIN ---\n";
-            std::cout << "Username: ";
-            clearInputStream();
-            std::getline(std::cin, username);
-            std::cout << "Password: ";
-            std::getline(std::cin, password);
+// Display statistics
+void displayStatistics() {
+    cout << "\n=== System Statistics ===" << endl;
+    cout << "IIIT-Delhi System:" << endl;
+    cout << "  Total Students: " << iiitManager.getTotalStudents() << endl;
+    cout << "\nIIT-Delhi System:" << endl;
+    cout << "  Total Students: " << iitManager.getTotalStudents() << endl;
+}
 
-            if (auth.login(username, password, role)) {
-                std::cout << "Login successful! Welcome Student.\n";
-                studentMenu(iitdDatabase, auth);
-            } else {
-                std::cout << "Login failed! Invalid credentials.\n";
-            }
-            break;
+// IIIT Menu
+void displayIIITMenu() {
+    while (true) {
+        cout << "\n=== IIIT-Delhi System (String Roll Numbers) ===" << endl;
+        cout << "1. Add Student\n2. Display Students\n3. Back to Main Menu\nChoice: ";
+        int choice;
+        cin >> choice;
+        cin.ignore();
+
+        switch (choice) {
+            case 1: addStudentIIIT(); break;
+            case 2: displayStudentsIIIT(); break;
+            case 3: return;
+            default: cout << "Invalid choice!" << endl;
         }
+    }
+}
 
-        default: {
-            std::cout << "Invalid choice!\n";
-            break;
+// IIT Menu
+void displayIITMenu() {
+    while (true) {
+        cout << "\n=== IIT-Delhi System (Integer Roll Numbers) ===" << endl;
+        cout << "1. Add Student\n2. Display Students\n3. Back to Main Menu\nChoice: ";
+        int choice;
+        cin >> choice;
+        cin.ignore();
+
+        switch (choice) {
+            case 1: addStudentIIT(); break;
+            case 2: displayStudentsIIT(); break;
+            case 3: return;
+            default: cout << "Invalid choice!" << endl;
+        }
+    }
+}
+
+// Main Menu
+void displayMainMenu() {
+    while (true) {
+        cout << "\n╔════════════════════════════════════════════════════════════╗" << endl;
+        cout << "║           ERP System - Student Management                  ║" << endl;
+        cout << "║           Assignment 4: Templates and Threads              ║" << endl;
+        cout << "╚════════════════════════════════════════════════════════════╝" << endl;
+        cout << "\n1. Load Students from CSV (3000 students)" << endl;
+        cout << "2. IIIT-Delhi System (String Roll Numbers)" << endl;
+        cout << "3. IIT-Delhi System (Integer Roll Numbers)" << endl;
+        cout << "4. Perform Parallel Sorting (Multi-threaded)" << endl;
+        cout << "5. Search High Grade Students (Grade >= 9)" << endl;
+        cout << "6. Display Statistics" << endl;
+        cout << "7. Exit" << endl;
+        cout << "\nEnter your choice: ";
+
+        int choice;
+        cin >> choice;
+        cin.ignore();
+
+        switch (choice) {
+            case 1: loadStudentsFromCSV(); break;
+            case 2: displayIIITMenu(); break;
+            case 3: displayIITMenu(); break;
+            case 4: performParallelSorting(); break;
+            case 5: searchHighGradeStudents(); break;
+            case 6: displayStatistics(); break;
+            case 7: 
+                cout << "\nThank you for using the ERP System. Goodbye!" << endl;
+                return;
+            default: cout << "\nInvalid choice! Please try again." << endl;
         }
     }
 }
 
 int main() {
-    iitdDatabase = new IIITStudentDatabase();
-    iitDatabase = new IITStudentDatabase();
-    AuthManager authManager;
-
-    int choice;
-    bool exit_program = false;
-
-    while (!exit_program) {
-        std::cout << "\n========================================\n";
-        std::cout << "   Welcome to University ERP System\n";
-        std::cout << "========================================\n\n";
-        std::cout << "========================================\n";
-        std::cout << "     UNIVERSITY ERP SYSTEM\n";
-        std::cout << "========================================\n";
-        std::cout << "1. Login as Admin\n";
-        std::cout << "2. Login as Student\n";
-        std::cout << "3. Exit\n";
-        std::cout << "========================================\n";
-        std::cout << "Enter your choice: ";
-
-        if (!(std::cin >> choice)) {
-            clearInputStream();
-            std::cout << "Invalid choice!\n";
-            continue;
-        }
-
-        switch (choice) {
-            case 1: {
-                std::string username, password;
-                std::cout << "\n--- ADMIN LOGIN ---\n";
-                std::cout << "Username: ";
-                clearInputStream();
-                std::getline(std::cin, username);
-                std::cout << "Password: ";
-                std::getline(std::cin, password);
-
-                UserRole role;
-                if (authManager.login(username, password, role)) {
-                    std::cout << "Login successful! Welcome Admin.\n";
-                    adminMenu(iitdDatabase, authManager);
-                } else {
-                    std::cout << "Login failed! Invalid credentials.\n";
-                }
-                break;
-            }
-
-            case 2: {
-                std::string username, password;
-                std::cout << "\n--- STUDENT LOGIN ---\n";
-                std::cout << "Username: ";
-                clearInputStream();
-                std::getline(std::cin, username);
-                std::cout << "Password: ";
-                std::getline(std::cin, password);
-
-                UserRole role;
-                if (authManager.login(username, password, role)) {
-                    std::cout << "Login successful! Welcome Professor.\n";
-                    studentMenu(iitdDatabase, authManager);
-                } else {
-                    std::cout << "Login failed! Invalid credentials.\n";
-                }
-                break;
-            }
-
-            case 3: {
-                std::cout << "Thank you for using University ERP System!\n";
-                exit_program = true;
-                break;
-            }
-
-            default: {
-                std::cout << "Invalid choice!\n";
-                break;
-            }
-        }
+    try {
+        displayMainMenu();
+    } catch (const exception& e) {
+        cerr << "Error: " << e.what() << endl;
+        return 1;
     }
-
-    delete iitdDatabase;
-    delete iitDatabase;
     return 0;
 }

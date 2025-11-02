@@ -1,86 +1,114 @@
 #ifndef STUDENT_H
 #define STUDENT_H
 
-#include <vector>
-#include <map>
 #include <string>
+#include <vector>
 #include <iostream>
+#include <sstream>
+#include <map>
 
-// Template class to accommodate different data types for roll numbers and course codes
-template<typename RollNoType, typename CourseCodeType>
+// Course structure for IIIT-Delhi (with semester and grade)
+struct IIITCourse {
+    std::string code;
+    int semester;
+    char grade;
+
+    IIITCourse(std::string c, int s, char g) : code(c), semester(s), grade(g) {}
+
+    int getGradePoints() const {
+        switch(grade) {
+            case 'A': return 10;
+            case 'B': return 9;
+            case 'C': return 8;
+            case 'D': return 7;
+            default: return 0;
+        }
+    }
+};
+
+// Course structure for IIT-Delhi (with integer code and grade)
+struct IITCourse {
+    int code;
+    char grade;
+
+    IITCourse(int c, char g) : code(c), grade(g) {}
+
+    int getGradePoints() const {
+        switch(grade) {
+            case 'A': return 10;
+            case 'B': return 9;
+            case 'C': return 8;
+            case 'D': return 7;
+            default: return 0;
+        }
+    }
+};
+
+// Template class to handle flexible student data types
+template <typename RollType, typename CourseType>
 class Student {
 private:
-    RollNoType rollNumber;
+    RollType rollNumber;
     std::string name;
     std::string branch;
-    int startingYear;
-    std::vector<CourseCodeType> currentCourses;
-    // Map: CourseCodeType -> Grade
-    std::map<CourseCodeType, int> previousCourses;
+    int startYear;
+    std::vector<CourseType> coursesTaken;
 
 public:
     // Constructor
-    Student(RollNoType rollNo, const std::string& studentName, 
-            const std::string& studentBranch, int year)
-        : rollNumber(rollNo), name(studentName), branch(studentBranch), 
-          startingYear(year) {}
+    Student() : rollNumber(RollType()), name(""), branch(""), startYear(0) {}
 
-    // Default constructor
-    Student() : rollNumber(RollNoType()), name(""), branch(""), startingYear(0) {}
+    Student(RollType roll, const std::string& n, const std::string& b, int year)
+        : rollNumber(roll), name(n), branch(b), startYear(year) {}
 
-    // Getters for roll number
-    RollNoType getRollNumber() const { return rollNumber; }
-
-    // Getters for name
+    // Getters
+    RollType getRollNumber() const { return rollNumber; }
     std::string getName() const { return name; }
-
-    // Getters for branch
     std::string getBranch() const { return branch; }
-
-    // Getters for starting year
-    int getStartingYear() const { return startingYear; }
+    int getStartYear() const { return startYear; }
+    const std::vector<CourseType>& getCourses() const { return coursesTaken; }
 
     // Setters
-    void setName(const std::string& studentName) { name = studentName; }
-    void setBranch(const std::string& studentBranch) { branch = studentBranch; }
-    void setStartingYear(int year) { startingYear = year; }
+    void setRollNumber(const RollType& roll) { rollNumber = roll; }
+    void setName(const std::string& n) { name = n; }
+    void setBranch(const std::string& b) { branch = b; }
+    void setStartYear(int year) { startYear = year; }
 
-    // Add current course
-    void addCurrentCourse(const CourseCodeType& courseCode) {
-        currentCourses.push_back(courseCode);
+    // Add course
+    void addCourse(const CourseType& course) {
+        coursesTaken.push_back(course);
     }
 
-    // Add previous course with grade
-    void addPreviousCourse(const CourseCodeType& courseCode, int grade) {
-        previousCourses[courseCode] = grade;
-    }
-
-    // Get current courses
-    const std::vector<CourseCodeType>& getCurrentCourses() const {
-        return currentCourses;
-    }
-
-    // Get previous courses
-    const std::map<CourseCodeType, int>& getPreviousCourses() const {
-        return previousCourses;
-    }
-
-    // Get grade for a specific course
-    int getGradeInCourse(const CourseCodeType& courseCode) const {
-        auto it = previousCourses.find(courseCode);
-        if (it != previousCourses.end()) {
-            return it->second;
+    // Find students with grade >= 9 in specific course
+    bool hasGradeAboveInCourse(int minGrade) const {
+        for (const auto& course : coursesTaken) {
+            if (course.getGradePoints() >= minGrade) {
+                return true;
+            }
         }
-        return -1; // Course not found
+        return false;
     }
 
-    // Comparison operators for sorting
+    // Display student info
+    void display() const {
+        std::cout << "Roll: ";
+        if (std::is_same<RollType, std::string>::value) {
+            std::cout << rollNumber;
+        } else {
+            std::cout << rollNumber;
+        }
+        std::cout << " | Name: " << name << " | Branch: " << branch 
+                  << " | Year: " << startYear << " | Courses: " << coursesTaken.size() << std::endl;
+    }
+
+    // For sorting by different criteria
     bool operator<(const Student& other) const {
-        return rollNumber < other.rollNumber;
+        if (startYear != other.startYear) return startYear < other.startYear;
+        return name < other.name;
     }
 
     bool operator>(const Student& other) const {
-        return rollNumber > other.rollNumber;
+        return other < *this;
     }
 
     bool operator==(const Student& other) const {

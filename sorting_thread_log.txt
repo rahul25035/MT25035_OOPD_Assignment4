@@ -1,0 +1,4 @@
+
+=== Sorting Log 1762088584 ===
+Thread 1: 4 ms
+Thread 0: 6 ms
