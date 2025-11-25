@@ -2,3 +2,18 @@
 === Sorting Log 1762088584 ===
 Thread 1: 4 ms
 Thread 0: 6 ms
+
+=== Sorting Log 1764060451 ===
+Thread 1: 3 ms
+Thread 0: 4 ms
+Thread 2: 2 ms
+
+=== Sorting Log 1764060505 ===
+Thread 0: 6 ms
+Thread 1: 7 ms
+
+=== Sorting Log 1764061572 ===
+Thread 1: 5 ms
+Thread 0: 5 ms
+Thread 2: 5 ms
+Thread 3: 3 ms

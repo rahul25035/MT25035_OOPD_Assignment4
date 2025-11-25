@@ -1,51 +1,50 @@
 #ifndef STUDENT_H
 #define STUDENT_H
 
-#include <string>
 #include <vector>
+#include <string>
 #include <iostream>
-#include <sstream>
-#include <map>
 
-// Course structure for IIIT-Delhi (with semester and grade)
+// Course structure definitions BEFORE they're used
 struct IIITCourse {
     std::string code;
     int semester;
     char grade;
-
-    IIITCourse(std::string c, int s, char g) : code(c), semester(s), grade(g) {}
-
+    
+    IIITCourse() : code(""), semester(0), grade('D') {}
+    IIITCourse(const std::string& c, int sem, char g) 
+        : code(c), semester(sem), grade(g) {}
+    
     int getGradePoints() const {
         switch(grade) {
             case 'A': return 10;
-            case 'B': return 9;
-            case 'C': return 8;
-            case 'D': return 7;
+            case 'B': return 8;
+            case 'C': return 6;
+            case 'D': return 4;
             default: return 0;
         }
     }
 };
 
-// Course structure for IIT-Delhi (with integer code and grade)
 struct IITCourse {
     int code;
     char grade;
-
+    
+    IITCourse() : code(0), grade('D') {}
     IITCourse(int c, char g) : code(c), grade(g) {}
-
+    
     int getGradePoints() const {
         switch(grade) {
             case 'A': return 10;
-            case 'B': return 9;
-            case 'C': return 8;
-            case 'D': return 7;
+            case 'B': return 8;
+            case 'C': return 6;
+            case 'D': return 4;
             default: return 0;
         }
     }
 };
 
-// Template class to handle flexible student data types
-template <typename RollType, typename CourseType>
+template<typename RollType, typename CourseType>
 class Student {
 private:
     RollType rollNumber;
@@ -57,7 +56,7 @@ private:
 public:
     // Constructor
     Student() : rollNumber(RollType()), name(""), branch(""), startYear(0) {}
-
+    
     Student(RollType roll, const std::string& n, const std::string& b, int year)
         : rollNumber(roll), name(n), branch(b), startYear(year) {}
 
@@ -92,12 +91,12 @@ public:
     // Display student info
     void display() const {
         std::cout << "Roll: ";
-        if (std::is_same<RollType, std::string>::value) {
+        if (std::is_same<RollType, unsigned int>::value) {
             std::cout << rollNumber;
         } else {
             std::cout << rollNumber;
         }
-        std::cout << " | Name: " << name << " | Branch: " << branch 
+        std::cout << " | Name: " << name << " | Branch: " << branch
                   << " | Year: " << startYear << " | Courses: " << coursesTaken.size() << std::endl;
     }
 

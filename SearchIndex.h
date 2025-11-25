@@ -4,15 +4,12 @@
 #include <map>
 #include <vector>
 #include <string>
-#include <iostream>
 #include <set>
-
-// Forward declarations for course types
-struct IIITCourse;
-struct IITCourse;
+#include <iostream>
+#include "Student.h"  // Include Student.h which now has the course definitions
 
 // Fast search index for students with high grades in specific courses
-template <typename StudentType>
+template<typename CourseType>
 class SearchIndex {
 private:
     // Map: CourseCode -> Vector of (StudentIndex, Grade)
@@ -45,7 +42,7 @@ public:
     // Time Complexity: O(n) where n = total index entries
     std::vector<int> findAllStudentsByGrade(int minGrade) const {
         std::vector<int> results;
-        std::set<int> uniqueStudents;  // To avoid duplicates
+        std::set<int> uniqueStudents; // To avoid duplicates
         
         for (const auto& courseMap : courseGradeIndex) {
             for (const auto& pair : courseMap.second) {
@@ -63,7 +60,7 @@ public:
     }
 
     // Build index from students - SPECIALIZED FOR DIFFERENT COURSE TYPES
-    template <typename CourseType>
+    template<typename StudentType>
     void buildIndex(const std::vector<StudentType>& students) {
         for (size_t i = 0; i < students.size(); i++) {
             const auto& courses = students[i].getCourses();
@@ -118,12 +115,10 @@ public:
         std::cout << "\n=== Search Index Statistics ===" << std::endl;
         std::cout << "Total Courses Indexed: " << courseGradeIndex.size() << std::endl;
         int totalStudentEntries = 0;
-        
         for (const auto& pair : courseGradeIndex) {
-            std::cout << " Course: " << pair.first << " - Students: " << pair.second.size() << std::endl;
+            std::cout << "  Course: " << pair.first << " - Students: " << pair.second.size() << std::endl;
             totalStudentEntries += pair.second.size();
         }
-        
         std::cout << "Total Student-Course Entries: " << totalStudentEntries << std::endl;
     }
 };

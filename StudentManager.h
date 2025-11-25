@@ -8,12 +8,12 @@
 #include <iostream>
 
 // Template class to manage collection of students
-template <typename RollType, typename CourseType>
+template<typename RollType, typename CourseType>
 class StudentManager {
 private:
     std::vector<Student<RollType, CourseType>> students;
-    std::vector<int> insertionOrder;  // Indices in insertion order
-    std::vector<int> sortedOrder;     // Indices in sorted order
+    std::vector<int> insertionOrder; // Indices in insertion order
+    std::vector<int> sortedOrder;    // Indices in sorted order
     bool isSorted;
 
 public:
@@ -43,10 +43,10 @@ public:
     // Sort students
     void sortStudents() {
         sortedOrder = insertionOrder;
-        std::sort(sortedOrder.begin(), sortedOrder.end(), 
-                 [this](int a, int b) {
-                     return students[a] < students[b];
-                 });
+        std::sort(sortedOrder.begin(), sortedOrder.end(),
+            [this](int a, int b) {
+                return students[a] < students[b];
+            });
         isSorted = true;
     }
 
@@ -98,6 +98,12 @@ public:
 
     const std::vector<Student<RollType, CourseType>>& getStudents() const {
         return students;
+    }
+
+    // Get sorted order indices (for CSV export)
+    const std::vector<int>& getSortedOrderIndices() {
+        if (!isSorted) sortStudents();
+        return sortedOrder;
     }
 };
 

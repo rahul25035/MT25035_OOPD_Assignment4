@@ -1,12 +1,12 @@
 #ifndef ITERATOR_H
 #define ITERATOR_H
 
-#include <iterator>
 #include <vector>
-#include <memory>
+#include <cstddef>
+#include <iterator>
 
 // Iterator for records in order of entry (insertion order)
-template <typename T>
+template<typename T>
 class InsertionOrderIterator {
 private:
     std::vector<T>* data;
@@ -48,7 +48,7 @@ public:
 };
 
 // Iterator for sorted order records
-template <typename T>
+template<typename T>
 class SortedOrderIterator {
 private:
     std::vector<T>* data;
